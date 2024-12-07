@@ -1,3 +1,8 @@
-# Ignore files without extensions (binary or otherwise)
-./main
+# Ignore all
+*
 
+# Unignore all with extensions
+!*.*
+
+# Unignore all dirs
+!*/
