@@ -1,0 +1,3 @@
+# Ignore files without extensions (binary or otherwise)
+./main
+
