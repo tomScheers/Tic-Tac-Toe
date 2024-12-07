@@ -1,0 +1,313 @@
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_render.h>
+#include <SDL2/SDL_surface.h>
+#include <SDL2/SDL_ttf.h>
+#include <cassert>
+#include <cstdlib>
+#include <iostream>
+#include <ostream>
+
+#define ROW_SIZE 3
+#define COL_SIZE 3
+
+enum SquareType {
+  X_SQUARE,
+  O_SQUARE,
+  FREE_SQUARE,
+};
+
+enum Players {
+  PLAYER_X,
+  PLAYER_O,
+};
+
+enum ButtonAction {
+  RESTART,
+  QUIT,
+  NONE,
+};
+
+class Board {
+public:
+  Board();
+  void printBoard();
+  void startGui();
+
+private:
+  enum SquareType board[3][3];
+  enum Players currPlayer;
+  bool isFinished;
+  bool hasWon();
+  void move(size_t row, size_t col);
+  enum ButtonAction handlePopup(SDL_Renderer *renderer, SDL_Event *event);
+  void restart();
+};
+
+Board::Board() {
+  currPlayer = PLAYER_X;
+  for (int i = 0; i < COL_SIZE; ++i) {
+    for (int j = 0; j < ROW_SIZE; ++j) {
+      board[i][j] = FREE_SQUARE;
+    }
+  }
+  isFinished = false;
+}
+
+void Board::restart() {
+  currPlayer = PLAYER_X;
+  for (int i = 0; i < COL_SIZE; ++i) {
+    for (int j = 0; j < ROW_SIZE; ++j) {
+      board[i][j] = FREE_SQUARE;
+    }
+  }
+  isFinished = false;
+}
+
+enum ButtonAction handlePopup(SDL_Renderer *renderer, SDL_Event *event) {
+  const size_t BUTTON_WIDTH = 100;
+  const size_t BUTTON_HEIGHT = 40;
+  const size_t POPUP_WIDTH = 250;
+  const size_t POPUP_HEIGHT = 200;
+  SDL_Rect restartButton = {50, 100, BUTTON_WIDTH, BUTTON_HEIGHT};
+  SDL_Rect quitButton = {150, 100, BUTTON_WIDTH, BUTTON_HEIGHT};
+
+  SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
+  SDL_Rect popupRect = {(500 - POPUP_WIDTH) / 2, (500 - POPUP_HEIGHT) / 2,
+                        POPUP_WIDTH, POPUP_HEIGHT};
+  SDL_RenderFillRect(renderer, &popupRect);
+
+  SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
+  SDL_RenderFillRect(renderer, &restartButton);
+
+  SDL_SetRenderDrawColor(renderer, 255, 0, 0, 255);
+  SDL_RenderFillRect(renderer, &quitButton);
+
+  if (event->type == SDL_MOUSEBUTTONDOWN) {
+    int x, y;
+    SDL_GetMouseState(&x, &y);
+
+    if (x >= restartButton.x && x <= restartButton.x + restartButton.w && y >= restartButton.y &&
+        y <= restartButton.y + restartButton.h) {
+      return RESTART;
+    }
+    // Check if Cancel button was clicked
+    if (x >= quitButton.x && x <= quitButton.x + quitButton.w &&
+             y >= quitButton.y && y <= quitButton.y + quitButton.h) {
+      return QUIT;
+    }
+  }
+  return NONE;
+}
+void Board::startGui() {
+  // Initialize SDL
+  if (SDL_Init(SDL_INIT_VIDEO) != 0) {
+    std::cerr << "SDL_Init Error: " << SDL_GetError() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  if (TTF_Init() < 0) {
+    std::cerr << "Failed to initialise SDL_ttf: " << TTF_GetError()
+              << std::endl;
+    SDL_Quit();
+    exit(EXIT_FAILURE);
+  }
+
+  // Create a window
+  const size_t WINDOW_WIDTH = 500;
+  const size_t WINDOW_HEIGHT = 500;
+  SDL_Window *window = SDL_CreateWindow("TicTacToe", SDL_WINDOWPOS_CENTERED,
+                                        SDL_WINDOWPOS_CENTERED, WINDOW_WIDTH,
+                                        WINDOW_HEIGHT, SDL_WINDOW_SHOWN);
+  if (window == nullptr) {
+    std::cerr << "SDL_CreateWindow Error: " << SDL_GetError() << std::endl;
+    TTF_Quit();
+    SDL_Quit();
+    exit(EXIT_FAILURE);
+  }
+
+  // Create a renderer
+  SDL_Renderer *renderer =
+      SDL_CreateRenderer(window, -1, SDL_RENDERER_ACCELERATED);
+  if (renderer == nullptr) {
+    std::cerr << "SDL_CreateRenderer Error: " << SDL_GetError() << std::endl;
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    SDL_Quit();
+    exit(EXIT_FAILURE);
+  }
+
+  // Load font
+  TTF_Font *font =
+      TTF_OpenFont("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf", 24);
+  if (!font) {
+    std::cerr << "Failed to load font: " << TTF_GetError() << std::endl;
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    SDL_Quit();
+    exit(EXIT_FAILURE);
+  }
+
+  // Render characters
+  const SDL_Color color = {0, 0, 0, 255};
+  const char *X = "X";
+  const char *O = "O";
+  SDL_Surface *X_surface = TTF_RenderText_Solid(font, X, color);
+  SDL_Surface *O_surface = TTF_RenderText_Solid(font, O, color);
+  if (!X_surface || !O_surface) {
+    std::cerr << "Failed to render text surface: " << TTF_GetError()
+              << std::endl;
+    TTF_CloseFont(font);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    SDL_Quit();
+    exit(EXIT_FAILURE);
+  }
+
+  SDL_Texture *X_texture = SDL_CreateTextureFromSurface(renderer, X_surface);
+  SDL_Texture *O_texture = SDL_CreateTextureFromSurface(renderer, O_surface);
+
+  if (!X_texture || !O_texture) {
+    std::cerr << "Failed to create texture: " << SDL_GetError() << std::endl;
+    TTF_CloseFont(font);
+    SDL_DestroyRenderer(renderer);
+    SDL_DestroyWindow(window);
+    TTF_Quit();
+    SDL_Quit();
+    exit(EXIT_FAILURE);
+  }
+
+  SDL_FreeSurface(X_surface);
+  SDL_FreeSurface(O_surface);
+
+  // Main loop
+  const size_t SQUARE_WIDTH = WINDOW_WIDTH / ROW_SIZE;
+  const size_t SQUARE_HEIGHT = WINDOW_HEIGHT / COL_SIZE;
+
+  std::cout << "Square width " << SQUARE_WIDTH << std::endl;
+  std::cout << "Square height " << SQUARE_HEIGHT << std::endl;
+  bool running = true;
+  SDL_Event event;
+  enum ButtonAction action = NONE;
+  while (running) {
+    // Handle events
+    while (SDL_PollEvent(&event)) {
+      if (event.type == SDL_QUIT) {
+        running = false;
+      } else if (event.type == SDL_MOUSEBUTTONDOWN) {
+        int mouseX, mouseY;
+        SDL_GetMouseState(&mouseX, &mouseY);
+        std::cout << "Mouse X " << mouseX << std::endl;
+        std::cout << "Mouse Y " << mouseY << std::endl;
+        int buttonRow = floor(mouseX / SQUARE_WIDTH);
+        int buttonCol = floor(mouseY / SQUARE_HEIGHT);
+        move(buttonRow, buttonCol);
+      } else if (isFinished) {
+        action = this->handlePopup(renderer, &event);
+
+        if (action == RESTART) {
+          restart();
+        } else if (action == QUIT) {
+          running = false;
+        }
+      }
+    }
+
+    // Draw Squares
+    for (int i = 0; i < COL_SIZE; ++i) {
+      for (int j = 0; j < ROW_SIZE; ++j) {
+        SDL_Rect squareRect = {static_cast<int>(SQUARE_WIDTH * i),
+                               static_cast<int>(SQUARE_HEIGHT * j),
+                               SQUARE_WIDTH, SQUARE_HEIGHT};
+        SDL_SetRenderDrawColor(renderer, 207, 185, 151, 255);
+        SDL_RenderFillRect(renderer, &squareRect);
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 255);
+        SDL_RenderDrawRect(renderer, &squareRect);
+
+        SDL_Rect textRect = {
+            static_cast<int>((squareRect.x) + (SQUARE_WIDTH / 4)),
+            static_cast<int>(squareRect.y + (SQUARE_HEIGHT / 4)),
+            SQUARE_WIDTH / 2, SQUARE_HEIGHT / 2};
+        switch (board[i][j]) {
+        case X_SQUARE:
+          SDL_RenderCopy(renderer, X_texture, NULL, &textRect);
+          break;
+        case O_SQUARE:
+          SDL_RenderCopy(renderer, O_texture, NULL, &textRect);
+          break;
+        case FREE_SQUARE:
+        default:
+          break;
+        }
+      }
+    }
+
+    // Present the renderer
+    SDL_RenderPresent(renderer);
+  }
+
+  // Cleanup
+  TTF_CloseFont(font);
+  SDL_DestroyRenderer(renderer);
+  SDL_DestroyWindow(window);
+  TTF_Quit();
+  SDL_Quit();
+}
+
+// Row and col are 0-indexed
+void Board::move(size_t row, size_t col) {
+  assert(row < ROW_SIZE && col < COL_SIZE);
+  if (board[row][col] != FREE_SQUARE || isFinished)
+    return;
+  board[row][col] = currPlayer == PLAYER_X ? X_SQUARE : O_SQUARE;
+  if (hasWon()) {
+    std::cout << "Congrats! Player " << (currPlayer == PLAYER_X ? 'X' : 'O')
+              << " has won!" << std::endl;
+    isFinished = true;
+  } else {
+    currPlayer = currPlayer == PLAYER_X ? PLAYER_O : PLAYER_X;
+  }
+}
+
+void Board::printBoard() {
+  for (int i = 0; i < COL_SIZE; ++i) {
+    for (int j = 0; j < ROW_SIZE; ++j) {
+      switch (board[i][j]) {
+      case X_SQUARE:
+        std::cout << 'X';
+        break;
+      case O_SQUARE:
+        std::cout << 'O';
+        break;
+      default:
+        std::cout << '-';
+        break;
+      }
+    }
+    std::cout << std::endl;
+  }
+  std::cout << std::endl;
+}
+
+bool Board::hasWon() {
+  if ((board[0][2] == board[1][1] && board[0][2] == board[2][0] &&
+       board[0][2] != FREE_SQUARE) ||
+      (board[0][0] == board[1][1] && board[0][0] == board[2][2] &&
+       board[0][0] != FREE_SQUARE))
+    return true;
+  for (int i = 0; i < COL_SIZE; ++i) {
+    if ((board[i][0] == board[i][1] && board[i][0] == board[i][2] &&
+         board[i][0] != FREE_SQUARE) ||
+        (board[0][i] == board[1][i] && board[0][i] == board[2][i] &&
+         board[0][i] != FREE_SQUARE))
+      return true;
+  }
+  return false;
+}
+
+int main() {
+  Board *board = new Board();
+  board->startGui();
+  return EXIT_SUCCESS;
+}
